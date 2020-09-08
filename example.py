@@ -1,5 +1,4 @@
 import mcserver as mcs
-import time
 
 server = mcs.Server('myserver/server.jar')
 

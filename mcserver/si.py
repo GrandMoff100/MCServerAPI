@@ -109,18 +109,29 @@ class Server:
                 properties[k] = v
         return properties
 
+    @properties.setter
+    def properties(self, value: dict):
+        with open(os.path.join(self.abs_cwd, 'server.properties'), 'w') as file:
+            properties = ['='.join(item) for item in value.items()]
+            file.writelines(properties)
 
     @property
     def banned_ips(self):
-        pass
+        with open(os.path.join(self.abs_cwd, 'banned-ips.json'), 'r') as file:
+            banned_ips = json.load(file)
+        return banned_ips
 
     @property
     def banned_players(self):
-        pass
+        with open(os.path.join(self.abs_cwd, 'banned-players.json'), 'r') as file:
+            banned_players = json.load(file)
+        return banned_players
 
     @property
     def ops(self):
-        pass
+        with open(os.path.join(self.abs_cwd, 'ops.json'), 'r') as file:
+            ops = json.load(file)
+        return ops
 
 
 
