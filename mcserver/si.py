@@ -1,8 +1,30 @@
+import datetime
 import subprocess
-import threading
 import os
 import json
 
+
+class Event:
+    def __init__(self, time: datetime, origin: str, message: str):
+        self.time = time
+        self.origin = origin
+        self.message = message
+
+    def __repr__(self):
+        return 'Event: ' + self.message
+
+    def __str__(self):
+        return self.message
+
+    def __iter__(self):
+        return iter(self.message)
+
+    def __eq__(self, other):
+        if type(other) != type(self):
+            return False
+        if self.time == other.time and self.message == other.message and self.origin == other.origin:
+            return True
+        return False
 
 class Server:
     def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G'):
@@ -11,7 +33,7 @@ class Server:
         self.jar = jar_path
 
         self._server = None
-        self.output = []
+        self.events = []
 
         self.online = False
 
@@ -19,7 +41,7 @@ class Server:
         if not os.path.isabs(self.abs_cwd):
             self.abs_cwd = os.path.join(os.getcwd(), self.abs_cwd)
 
-    def _start(self):
+    def start(self):
         if (not os.path.isfile(os.path.join(self.abs_cwd, self.jar))) or (not self.jar.endswith('.jar')):
             raise OSError('{} is not a jar file.'.format(self.jar))
 
@@ -27,51 +49,51 @@ class Server:
             ' '.join(['java', f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
             shell=True,
-            stdout=open(os.path.join(self.abs_cwd,'temp-log.txt'), 'w'),
+            stdout=open(os.path.join(self.abs_cwd, 'temp-log.txt'), 'w'),
             stderr=subprocess.PIPE,
-            stdin=open(os.path.join(self.abs_cwd,'terminal-stdin.txt'), 'w')
+            stdin=open(os.path.join(self.abs_cwd, 'terminal-stdin.txt'), 'w')
         )
         self.online = True
-
-    def start(self):
-        threading.Thread(target=self._start, name=self.jar).start()
+        print('Server Online')
 
     @property
-    def events(self):
+    def new_events(self):
         with open(os.path.join(self.abs_cwd, 'temp-log.txt'), 'r') as log:
             events = log.readlines()
 
         for index in range(len(events)):
-            ctx, event = events[index].strip('[').strip(']').split(':')
-            time, origin = ctx.split(' ')
-            yield {
-                'time': time,
-                'origin': origin,
-                'message': event
-            }
-
-    @property
-    def is_started(self):
-        threads = [thread.name for thread in threading.enumerate()]
-        return True if self.jar in threads else False
+            if events[index].startswith('['):
+                ctx, *message = events[index].split(': ')
+                if '\x00' in ctx:
+                    continue
+                time, origin = ctx.replace('[', '').replace(']', '').split(' ')
+                now = datetime.datetime.now()
+                time = datetime.datetime(now.year, now.month, now.day, *[int(num) for num in time.split(':')])
+                event = Event(time, origin, ': '.join(message))
+                if event not in self.events:
+                    yield event
+                    self.events.append(event)
 
     def _exec_cmd(self, cmd, *params):
         if not cmd.startswith('/'):
             cmd = '/' + cmd
 
-        if not self.is_started:
+        if not self.online:
             raise OSError('Server isn\'t started yet.')
 
         stdout, stderr = self._server.communicate(' '.join([cmd, *params]))
 
         return stdout, stderr
 
-    def killshell(self):
+    def killserver(self):
         self._server.kill()
 
     # Commands
-    def execute(self, *args):
+    def exec_cmd(self, *args):
         return self._exec_cmd(*args)
+
+    def execute(self, *args):
+        return self._exec_cmd('execute', *args)
 
     def say(self, message: str):
         return self._exec_cmd('say', message)
@@ -132,8 +154,3 @@ class Server:
         with open(os.path.join(self.abs_cwd, 'ops.json'), 'r') as file:
             ops = json.load(file)
         return ops
-
-
-
-
-
