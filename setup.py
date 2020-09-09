@@ -9,5 +9,5 @@ setup(
     author='Pixymon',
     author_email='nlarsen23.student@gmail.com',
     description='Integratable API for Local Minecraft Servers',
-    install_requires=[]
+    install_requires=['requests']
 )

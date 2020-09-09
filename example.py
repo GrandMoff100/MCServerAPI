@@ -1,11 +1,4 @@
-import mcserver as mcs
+from mcserver import Server
 
-server = mcs.Server('myserver/server.jar')
-
-server.start()
-
-while server.online:
-    for event in server.new_events:
-        print(repr(event))
-
-server.killserver()
+server = Server('myserver/server.jar')
+server.run()
