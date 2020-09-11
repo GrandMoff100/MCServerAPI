@@ -1,8 +1,8 @@
 import datetime
 import requests
 import json
-from typing import Union
-
+import io
+from typing import Union, IO, List, Optional
 
 class Player:
     cache = {}
@@ -52,7 +52,7 @@ class Player:
         return '<Player {}:{}>'.format(self.player, self.uuid)
 
 
-class Event:
+class Event():
     def __init__(self, raw_event: str):
         self.raw = raw_event
         if self.raw.startswith('['):
@@ -104,7 +104,51 @@ class Event:
         pass
 
 
-class Parser:
+class Parser(io.TextIOBase):
+    def __init__(self):
+        self._events = []
+        self._writable = True
+        self._readable = True
+
+    def fileno(self) -> int:
+        return 1
+
+    def readable(self) -> bool:
+        return self._readable
+
+    def read(self, __size: Optional[int] = ...) -> str:
+        return '\n'.join(self._events)
+
+    def readlines(self, __hint: int = ...) -> List[str]:
+        return self._events[:__hint]
+
+    def readline(self, __size: int = ...) -> str:
+        return self._events[__size]
+
+    def write(self, __s: str) -> int:
+        self.events = __s.split('\n')
+        return len(self.events)
+
+    def writelines(self, __lines: List[str]) -> None:
+        self.events = __lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    @property
+    def events(self):
+        return self._events
+
+    @events.setter
+    def events(self, events: list):
+        print(events, sep='\n')
+        print()
+        # self.process_events(events)
+        self._events = events
+
     def process_events(self, events):
         for raw_event in events:
             try:

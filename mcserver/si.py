@@ -8,15 +8,17 @@ from .parser import Parser
 
 
 class Server:
-    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', parser=None, update_wait: int = 3):
-        if parser is None:
-            parser = Parser()
+    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', parser_class=None, update_wait: int = 3):
+        if parser_class is None:
+            parser_class = Parser
 
         self.update_wait = update_wait
-        self.parser = parser
+        self.parser = parser_class()
         self.max_RAM = max_RAM
         self.min_RAM = min_RAM
         self.jar = jar_path
+
+        self._log_file_name = 'temp-log.txt'
 
         self._server = None
         self._old_events = 0
@@ -35,27 +37,11 @@ class Server:
             ' '.join(['java', f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
             shell=True,
-            stdout=open(os.path.join(self.abs_cwd, 'temp-log.txt'), 'w'),
+            stdout=self.parser,
             stderr=subprocess.PIPE,
             stdin=subprocess.PIPE
         )
         self.online = True
-
-        while self.online:
-            self.parser.process_events(self.new_events)
-            time.sleep(self.update_wait)
-
-    @property
-    def new_events(self):
-        with open(os.path.join(self.abs_cwd, 'temp-log.txt'), 'r') as log:
-            events = log.readlines()
-        if len(events) > self._old_events:
-            new_events = events[self._old_events:]
-            print(len(new_events), self._old_events, len(events))
-            self._old_events += len(events) - self._old_events
-            return new_events
-        else:
-            return []
 
     def _exec_cmd(self, cmd, *params):
         if not self.online:

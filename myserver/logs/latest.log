@@ -1,5 +1,5 @@
-[11:09:03] [main/INFO]: Environment: authHost='https://authserver.mojang.com', accountsHost='https://api.mojang.com', sessionHost='https://sessionserver.mojang.com', name='PROD'
-[11:09:03] [main/FATAL]: Failed to start the minecraft server
+[14:51:19] [main/INFO]: Environment: authHost='https://authserver.mojang.com', accountsHost='https://api.mojang.com', sessionHost='https://sessionserver.mojang.com', name='PROD'
+[14:51:19] [main/FATAL]: Failed to start the minecraft server
 aeu$a: /home/nate/Desktop/MCServerWrapper/myserver/./world/session.lock: already locked (possibly by other Minecraft instance?)
 	at aeu$a.a(SourceFile:98) ~[server.jar:?]
 	at aeu.a(SourceFile:44) ~[server.jar:?]
