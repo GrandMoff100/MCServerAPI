@@ -29,8 +29,10 @@ class Event:
 
         if head.startswith('<') and head.endswith('>'):
             self.ctx.append(head.replace('<', '').replace('>', ''))
+            self.ctx.append(' '.join(comps[1:]))
             self.event_type = 'player_message'
         elif "Can't keep up!" in raw_message:
+            self.ctx.append(int(comps[9]))
             self.event_type = 'ticks_behind'
         elif "left the game" in raw_message:
             self.ctx.append(head)
@@ -39,6 +41,7 @@ class Event:
             self.ctx.append(head)
             self.event_type = 'player_join'
         elif "Done" in raw_message:
+
             self.event_type = 'ready'
         elif "Preparing spawn area:" in raw_message:
             self.ctx.append(int(comps[-1].replace('%', '')))
@@ -100,8 +103,12 @@ class Parser:
                     sys.stdout.write(raw_event)
                     self._event_cache[raw_event] = Event(self, raw_event)
                     sys.stdout.write(' -> ' + str(self._event_cache[raw_event].event_type) + '\n')
-                    if self._event_cache[raw_event].event_type is None:
+                    event = self._event_cache[raw_event]
+                    if event.event_type is None:
                         threading.Thread(target=self.on_unrecognized_event, args=[raw_event]).start()
+                    else:
+                        threading.Thread(target=self.__dict__['on_' + event.event_type], args=[event.ctx]).start()
+
             except Exception as err:
                 if raw_event not in self._error_cache:
                     self.on_parsing_error(err, raw_event)
