@@ -1,14 +1,18 @@
-from mcserver import Server, Parser
-import time
+from mcserverapi import Server, Parser
+import psutil
 
+# Define your event triggers.
+class MyParser(Parser):
+    def on_ready(self, ctx):
+        print('I AM READY')
+
+# Initialize Server Object
 server = Server('myserver/server.jar')
 
-server.run()
+# Initialize Custom Event Triggers for server.
+parser = MyParser(server)
 
-sec = 1
-min = 60 * sec
-hour = 60 * min
-day = 24 * hour
-year = 365 * day
 
-time.sleep(2 * day)
+server.start()  # Starts Server Subprocess
+
+parser.watch_for_events()  # A blocking while server online loop, watching for events.

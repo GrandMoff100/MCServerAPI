@@ -1,64 +1,77 @@
-import datetime
 import json
 import os
 import subprocess
-import time
-
-from .parser import Parser
-
+import atexit
+import sys
+import psutil
 
 class Server:
-    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', parser_class=None, update_wait: int = 3):
-        if parser_class is None:
-            parser_class = Parser
-
-        self.update_wait = update_wait
-        self.parser = parser_class()
+    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None, sdtin=None):
         self.max_RAM = max_RAM
         self.min_RAM = min_RAM
         self.jar = jar_path
 
-        self._log_file_name = 'temp-log.txt'
-
-        self._server = None
-        self._old_events = 0
-
-        self.online = False
+        self.process = None
+        self._log = 'temp-log.txt'
 
         self.abs_cwd, self.jar = os.path.split(self.jar)
         if not os.path.isabs(self.abs_cwd):
             self.abs_cwd = os.path.join(os.getcwd(), self.abs_cwd)
 
-    def run(self):
+        try:
+            file = open(os.path.join(self.abs_cwd, self._log), 'r+')
+        except FileNotFoundError:
+            file = open(os.path.join(self.abs_cwd, self._log), 'w+')
+
+        atexit.register(os.remove, os.path.join(self.abs_cwd, self._log))
+
+        self.stdout = file if stdout is None else stdout
+        self.sterr = file if stdout is None else stderr
+        self.stdin = sys.stdin if stdout is None else sdtin
+
+    def online(self):
+        return True if self.process.returncode is None else False
+
+    def _kill_conflicting_procs(self):
+        for proc in psutil.process_iter():
+            if 'server.jar' in proc.cmdline():
+                proc.kill()
+
+    def start(self):
+        self._kill_conflicting_procs()
+
         if (not os.path.isfile(os.path.join(self.abs_cwd, self.jar))) or (not self.jar.endswith('.jar')):
             raise OSError('{} is not a jar file.'.format(self.jar))
 
-        self._server = subprocess.Popen(
+        # noinspection PyTypeChecker
+        self.process = subprocess.Popen(
             ' '.join(['java', f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
-            shell=True,
-            stdout=self.parser,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.PIPE
+            stdin=self.stdin,
+            stdout=self.stdout,
+            stderr=self.sterr,
+            shell=True
         )
-        self.online = True
+
+        atexit.register(self.process.terminate)
 
     def _exec_cmd(self, cmd, *params):
         if not self.online:
             raise OSError('Server isn\'t started yet.')
-
-        stdout, stderr = self._server.communicate(' '.join([cmd, *params]))
-
+        stdout, stderr = self.process.communicate(' '.join([cmd, *params]))
         return stdout, stderr
 
-    def killserver(self):
-        self._server.kill()
+    def hardstop(self):
+        self.process.terminate()
 
     # Commands
     def run_cmd(self, *args):
         return self._exec_cmd(*args)
 
     def op(self):
+        pass
+
+    def deop(self):
         pass
 
     # Server Folder Analysis
@@ -74,9 +87,9 @@ class Server:
         return properties
 
     @properties.setter
-    def properties(self, value: dict):
+    def properties(self, properties: dict):
         with open(os.path.join(self.abs_cwd, 'server.properties'), 'w') as file:
-            properties = ['='.join(item) for item in value.items()]
+            properties = ['='.join(item) for item in properties.items()]
             file.writelines(properties)
 
     @property
@@ -96,3 +109,18 @@ class Server:
         with open(os.path.join(self.abs_cwd, 'ops.json'), 'r') as file:
             ops = json.load(file)
         return ops
+
+    @property
+    def whitelist(self):
+        with open(os.path.join(self.abs_cwd, 'whitelist.json'), 'r') as file:
+            whitelist = json.load(file)
+        return whitelist
+
+    @property
+    def usercache(self):
+        with open(os.path.join(self.abs_cwd, 'usercache.json'), 'r') as file:
+            usercache = json.load(file)
+        return usercache
+
+
+

@@ -1,194 +1,172 @@
 import datetime
-import requests
-import json
-import io
-from typing import Union, IO, List, Optional
+import os
+import sys
+import threading
+import atexit
+import time
+from typing import Union, Optional, List
+from mcserverapi.si import Server
 
-class Player:
-    cache = {}
-
-    def __init__(self, player=None, uuid=None):
-        if player and uuid:
-            pass
-        elif uuid:
-            player = self.get_player(uuid)
-        elif player:
-            uuid = self.get_uuid(player)
-        else:
-            raise ValueError('class Player needs either a player username or uuid to initialize.')
-        self.player = player
-        self.uuid = uuid
-
-    def get_player(self, uuid):
-        if uuid in self.cache.values():
-            return {v:k for k,v in self.cache.items()}[uuid]
-        api = 'https://api.mojang.com/user/profiles/%s/names' % uuid
-        try:
-            response = requests.get(api).json()
-            if 'error' in response and 'errorMessage' in response:
-                ResponseError = type(response['error'], tuple([Exception]), {})
-                raise ResponseError(response['errorMessage'])
-            self.cache[response[-1]['name']] = uuid
-            return response[-1]['name']
-        except json.decoder.JSONDecodeError:
-            raise ValueError('No players exist with uuid, {}, according to Mojang.'.format(uuid))
-
-    def get_uuid(self, player):
-        if player in self.cache:
-            return self.cache[player]
-
-        api = 'https://api.mojang.com/users/profiles/minecraft/%s' % player
-        try:
-            response = requests.get(api).json()
-            if 'error' in response and 'errorMessage' in response:
-                ResponseError = type(response['error'], tuple([Exception]), {})
-                raise ResponseError(response['errorMessage'])
-            self.cache[player] = response['id']
-            return response['id']
-        except json.decoder.JSONDecodeError:
-            raise ValueError('Player {} Doesn\'t exist, according to Mojang.'.format(player))
-
-    def __repr__(self):
-        return '<Player {}:{}>'.format(self.player, self.uuid)
+"""
+[17:12:16] [Server thread/INFO]: <KungFuPanda09> hello
+[17:12:20] [Server thread/INFO]: KungFuPanda09 left the game
+[17:12:29] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 11693ms or 233 ticks behind
+[17:12:20] [Server thread/INFO]: KungFuPanda09 left the game
+"""
 
 
-class Event():
-    def __init__(self, raw_event: str):
-        self.raw = raw_event
-        if self.raw.startswith('['):
-            info = self.raw.replace('\n', '').split(': ')[0]
-            message = self.raw.replace('\n', '').split(': ')[1:]
-            self.message = ': '.join(message).replace('[', ' ').replace(']', '')
-            time, self.process = info.replace('[', '').replace(']', '').split(' ')[0], ' '.join(info.replace('[', '').replace(']', '').split(' ')[1:])
-            now = datetime.datetime.now()
-            self.time = datetime.datetime(now.year, now.month, now.day, *[int(num) for num in time.split(':')])
-        else:
-            raise ValueError('Not a recognized event,', self.raw)
+class Event:
+    def __init__(self, parser, raw_event: str):
+        self._parser = parser
+        self._set_context(raw_event)
+        self.event_type = None
+        self.ctx = []
+        self._clean_raw_message(self._raw_message)
 
-        self.type = self._event_type()
+    def _clean_raw_message(self, raw_message):
+        comps = raw_message.split(' ')
+        head = comps[0]
 
-    def _event_type(self) -> Union[str, None]:
-        msg_comps = self.message.split(' ')
-        try:
-            Player(msg_comps[0])  # Check if valid player from Mojang.
-            if msg_comps[1] == 'left':
-                return 'player_leave'
-            elif msg_comps[1] == 'joined':
-                return 'player_join'
-            elif ' '.join(msg_comps[1:3]) == 'lost connection':
-                return 'player_disconnect'
-            elif msg_comps[1].startswith('/'):
-                return 'player_connect'
-        except ValueError:
-            print(' '.join(msg_comps[0:3]), 'Preparing spawn area')
-            if ' '.join(msg_comps[0:3]) == 'Preparing spawn area':
-                return 'spawn_prep'
-            if msg_comps[0] == 'Done':
-                return 'ready'
-            if ' '.join(msg_comps[0:3]) == 'Can\'t keep up!':
-                return 'ticks_behind'
-            if ' '.join(msg_comps[0:6]) == 'Considering it to be crashed,':
-                return 'crash'
-            if msg_comps[0].startswith('<') and msg_comps[0].endswith('>'):
-                try:
-                    Player(msg_comps[0].replace('<', '').replace('>', ''))
-                    return 'player_msg'
-                except ValueError:
-                    return str(None)
+        if head.startswith('<') and head.endswith('>'):
+            self.ctx.append(head.replace('<', '').replace('>', ''))
+            self.event_type = 'player_message'
+        elif "Can't keep up!" in raw_message:
+            self.event_type = 'ticks_behind'
+        elif "left the game" in raw_message:
+            self.ctx.append(head)
+            self.event_type = 'player_leave'
+        elif "joined the game" in raw_message:
+            self.ctx.append(head)
+            self.event_type = 'player_join'
+        elif "Done" in raw_message:
+            self.event_type = 'ready'
+        elif "Preparing spawn area:" in raw_message:
+            self.ctx.append(int(comps[-1].replace('%', '')))
+            self.event_type = 'spawn_prep'
+        elif 'Environment:' in raw_message:
+            env = {}
+            for comp in comps:
+                comp = comp.replace(',', '').replace("'", '')
+                if '=' in comp:
+                    k, v = comp.split('=')
+                    env[k] = v
+            self.ctx.append(env)
+            self.event_type = 'start'
+        elif 'Failed to start the minecraft server' in raw_message:
+            self.event_type = 'failed_start'
 
-    @property
-    def ctx(self):
-        return [self.time, self._parse_message(self.message)]
 
-    def _parse_message(self, message: str):
+    def _set_context(self, raw):
+        raw = raw.replace(': ', '@@@', 1)
+        info, self._raw_message = raw.split('@@@')
+        info = info.replace('] [', ']@@@[', 1)
+        time, thread_type = info\
+            .replace('[', '')\
+            .replace(']', '')\
+            .split('@@@')
+
+        self.at_time = self._convert_time(time)
+        self.thread_type = thread_type
+    
+    def _convert_time(self, time_string):
+        hour, minute, second = [int(num) for num in time_string.split(':')]
+        _now = datetime.datetime.now()
+        return datetime.datetime(_now.year, _now.month, _now.day, hour, minute, second)
+
+
+class Parser:
+    def __init__(self, server: Server, cycle_length: int = 1):
+        self._si = server
+        self._cycle_length = cycle_length
+        self._event_cache = {}
+        self._error_cache = []
+
+    def watch_for_events(self):
+        while self._si.online:
+            new_stream = open(os.path.join(self._si.abs_cwd, self._si._log), 'r+')
+            self.process_events(*new_stream.readlines())
+            new_stream.close()
+            time.sleep(self._cycle_length)
+
+    def player_uuid(self, player):
+        usercache = self._si.usercache
+        return {name: uuid for name, uuid in zip([cache['name'] for cache in usercache], [cache['uuid'] for cache in usercache])}[player]
+
+    def process_events(self, *events):
+        for raw_event in events:
+            raw_event = raw_event.replace('\n', '', 1)
+            try:
+                if raw_event not in self._event_cache:
+                    sys.stdout.write(raw_event)
+                    self._event_cache[raw_event] = Event(self, raw_event)
+                    sys.stdout.write(' -> ' + str(self._event_cache[raw_event].event_type) + '\n')
+                    if self._event_cache[raw_event].event_type is None:
+                        threading.Thread(target=self.on_unrecognized_event, args=[raw_event]).start()
+            except Exception as err:
+                if raw_event not in self._error_cache:
+                    self.on_parsing_error(err, raw_event)
+                    self._error_cache.append(raw_event)
+
+    def on_ready(self, ctx):
         pass
 
+    def on_spawn_prep(self, ctx):
+        pass
 
-class Parser(io.TextIOBase):
-    def __init__(self):
-        self._events = []
-        self._writable = True
-        self._readable = True
+    def on_player_join(self, ctx):
+        pass
 
-    def fileno(self) -> int:
-        return 1
+    def on_player_connect(self, ctx):
+        pass
 
-    def readable(self) -> bool:
-        return self._readable
+    def on_player_leave(self, ctx):
+        pass
 
-    def read(self, __size: Optional[int] = ...) -> str:
-        return '\n'.join(self._events)
+    def on_player_disconnect(self, ctx):
+        pass
 
-    def readlines(self, __hint: int = ...) -> List[str]:
-        return self._events[:__hint]
+    def on_player_death(self, ctx):
+        pass
 
-    def readline(self, __size: int = ...) -> str:
-        return self._events[__size]
+    def on_ticks_behind(self, ctx):
+        pass
 
-    def write(self, __s: str) -> int:
-        self.events = __s.split('\n')
-        return len(self.events)
+    def on_player_message(self, ctx):
+        pass
 
-    def writelines(self, __lines: List[str]) -> None:
-        self.events = __lines
+    def on_crash(self, ctx):
+        pass
 
-    def __enter__(self):
-        return self
+    def on_start(self, ctx):
+        pass
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+    def on_failed_start(self, ctx):
+        pass
 
-    @property
-    def events(self):
-        return self._events
+    def on_default_gametype_init(self, ctx):
+        pass
 
-    @events.setter
-    def events(self, events: list):
-        print(events, sep='\n')
-        print()
-        # self.process_events(events)
-        self._events = events
+    def on_preparing_level(self, ctx):
+        pass
 
-    def process_events(self, events):
-        for raw_event in events:
-            try:
-                event = Event(raw_event)
-                for attr in self.__dict__:
-                    if attr == 'on_' + event.type:
-                        self.__dict__[attr](*event.ctx)
+    def on_start_region(self, ctx):
+        pass
 
-            except Exception as err:
-                self.on_parsing_error(err, raw_event)
+    def on_loading_recipes(self, ctx):
+        pass
 
-    def on_ready(self, time, startup_time):
-        print('ready')
+    def on_loading_achievements(self, ctx):
+        pass
 
-    def on_spawn_prep(self, completion_percent: float):
-        print('prep')
+    def on_start_minecraft_version(self, ctx):
+        pass
 
-    def on_player_join(self, time, player):
-        print('join')
-
-    def on_player_connect(self, time, player):
-        print('connect')
-
-    def on_player_leave(self, time, player):
-        print('leave')
-
-    def on_player_disconnect(self, time, player):
-        print('disconnect')
-
-    def on_ticks_behind(self, time, ticks):
-        print('behind')
-
-    def on_command(self, time, command):
-        print('command')
-
-    def on_player_message(self, time, player, message):
-        print('message')
-
-    def on_crash(self):
-        print('crashed')
+    def on_properties_load(self, ctx):
+        pass
 
     def on_parsing_error(self, err, raw_event):
-        print(err.__class__.__name__, err, raw_event)
+        sys.stderr.write(': '.join([str(err.__class__.__name__), *err.args, raw_event]))
+        sys.exit()
+
+    def on_unrecognized_event(self, raw_event):
+        pass
