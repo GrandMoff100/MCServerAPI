@@ -4,9 +4,12 @@ import subprocess
 import atexit
 import sys
 import psutil
+import socket
+import multiprocessing
+
 
 class Server:
-    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None, sdtin=None):
+    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None):
         self.max_RAM = max_RAM
         self.min_RAM = min_RAM
         self.jar = jar_path
@@ -22,17 +25,19 @@ class Server:
             file = open(os.path.join(self.abs_cwd, self._log), 'r+')
         except FileNotFoundError:
             file = open(os.path.join(self.abs_cwd, self._log), 'w+')
-
-        atexit.register(os.remove, os.path.join(self.abs_cwd, self._log))
+        finally:
+            atexit.register(os.remove, os.path.join(self.abs_cwd, self._log))
 
         self.stdout = file if stdout is None else stdout
         self.sterr = file if stdout is None else stderr
-        self.stdin = sys.stdin if stdout is None else sdtin
+        self.stdin = subprocess.PIPE
 
     def online(self):
         return True if self.process.returncode is None else False
 
     def _kill_conflicting_procs(self):
+        if os.path.exists(os.path.join(self.abs_cwd, self._log)):
+            os.remove(os.path.join(self.abs_cwd, self._log))
         for proc in psutil.process_iter():
             if 'server.jar' in proc.cmdline():
                 proc.kill()
@@ -53,26 +58,22 @@ class Server:
             shell=True
         )
 
+        sys.stdin = self.process.stdin
+
         atexit.register(self.process.terminate)
 
     def _exec_cmd(self, cmd, *params):
         if not self.online:
             raise OSError('Server isn\'t started yet.')
-        stdout, stderr = self.process.communicate(' '.join([cmd, *params]))
-        return stdout, stderr
+        self.process.stdin.write(bytes(' '.join([cmd, *params]), 'utf-8') + b'\n')
+        self.process.stdin.flush()
 
     def hardstop(self):
         self.process.terminate()
 
     # Commands
     def run_cmd(self, *args):
-        return self._exec_cmd(*args)
-
-    def op(self):
-        pass
-
-    def deop(self):
-        pass
+        self._exec_cmd(*args)
 
     # Server Folder Analysis
     @property
