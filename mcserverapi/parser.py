@@ -109,10 +109,13 @@ class Parser:
 
     def watch_for_events(self):
         while self._si.online:
-            new_stream = open(os.path.join(self._si.abs_cwd, self._si._log), 'r+')
-            self.process_events(*new_stream.readlines())
-            new_stream.close()
-            time.sleep(self._cycle_length)
+            try:
+                new_stream = open(os.path.join(self._si.abs_cwd, self._si._log), 'r+')
+                self.process_events(*new_stream.readlines())
+                new_stream.close()
+                time.sleep(self._cycle_length)
+            except FileNotFoundError:
+                pass
 
     def player_uuid(self, player):
         usercache = self._si.usercache

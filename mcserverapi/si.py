@@ -38,6 +38,8 @@ class Server:
     def _kill_conflicting_procs(self):
         if os.path.exists(os.path.join(self.abs_cwd, self._log)):
             os.remove(os.path.join(self.abs_cwd, self._log))
+            with open(os.path.join(self.abs_cwd, self._log), 'w') as file:
+                pass
         for proc in psutil.process_iter():
             if 'server.jar' in proc.cmdline():
                 proc.kill()
