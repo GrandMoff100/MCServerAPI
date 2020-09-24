@@ -9,10 +9,12 @@ import multiprocessing
 
 
 class Server:
-    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None):
+    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None, java_path='java'):
         self.max_RAM = max_RAM
         self.min_RAM = min_RAM
         self.jar = jar_path
+
+        self._java = java_path
 
         self.process = None
         self._log = 'temp-log.txt'
@@ -52,7 +54,7 @@ class Server:
 
         # noinspection PyTypeChecker
         self.process = subprocess.Popen(
-            ' '.join(['java', f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
+            ' '.join([self._java, f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
             stdin=self.stdin,
             stdout=self.stdout,
