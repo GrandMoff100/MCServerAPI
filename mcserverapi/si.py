@@ -6,12 +6,12 @@ import sys
 import psutil
 import socket
 import multiprocessing
+import colorama
+import time
 
 
 class Server:
-    def __init__(self, jar_path: str, min_RAM: str = '1G', max_RAM: str = '3G', stdout=None, stderr=None, java_path='java'):
-        self.max_RAM = max_RAM
-        self.min_RAM = min_RAM
+    def __init__(self, jar_path: str, stdout=None, stderr=None, java_path='java'):
         self.jar = jar_path
 
         self._java = java_path
@@ -37,24 +37,31 @@ class Server:
     def online(self):
         return True if self.process.returncode is None else False
 
-    def _kill_conflicting_procs(self):
+    def _check_for_conflicting_procs(self):
         if os.path.exists(os.path.join(self.abs_cwd, self._log)):
             os.remove(os.path.join(self.abs_cwd, self._log))
             with open(os.path.join(self.abs_cwd, self._log), 'w') as file:
                 pass
         for proc in psutil.process_iter():
             if 'server.jar' in proc.cmdline():
-                proc.kill()
+                print(colorama.RED + 'There is another Server Process already running, please terminate that and run this again.')
+                time.sleep(5)
+                exit()
+                
 
-    def start(self):
-        self._kill_conflicting_procs()
+    def start(self, *java_args, **java_flags):
+        self._check_for_conflicting_procs()
 
         if (not os.path.isfile(os.path.join(self.abs_cwd, self.jar))) or (not self.jar.endswith('.jar')):
             raise OSError('{} is not a jar file.'.format(self.jar))
 
+        if 'nogui' in java_args:
+            java_args.remove('nogui')
+        
+        
         # noinspection PyTypeChecker
         self.process = subprocess.Popen(
-            ' '.join([self._java, f'-Xms{self.min_RAM}', f'-Xmx{self.max_RAM}', '-jar', self.jar, 'nogui']),
+            ' '.join([self._java, *java_args, *[' '.join(str(k), str(v)) for k,v in java_flags.items()], '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
             stdin=self.stdin,
             stdout=self.stdout,

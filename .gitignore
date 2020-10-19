@@ -4,3 +4,4 @@ venv/
 *.log.gz
 *.json
 myserver/
+.replit
