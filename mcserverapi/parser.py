@@ -5,13 +5,6 @@ import threading
 import time
 from mcserverapi.si import Server
 
-"""
-[17:12:16] [Server thread/INFO]: <KungFuPanda09> hello
-[17:12:20] [Server thread/INFO]: KungFuPanda09 left the game
-[17:12:29] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 11693ms or 233 ticks behind
-[17:12:20] [Server thread/INFO]: KungFuPanda09 left the game
-"""
-
 
 class Event:
     def __init__(self, parser, raw_event: str):
