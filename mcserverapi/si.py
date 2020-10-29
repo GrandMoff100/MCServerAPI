@@ -58,7 +58,12 @@ class Server:
             java_args.remove('nogui')
         
         self.process = subprocess.Popen(
-            ' '.join([self._java, *java_args, *[' '.join(str(k), str(v)) for k,v in java_flags.items()], '-jar', self.jar, 'nogui']),
+            ' '.join(
+                [
+                    self._java, 
+                    *java_args, 
+                    *[
+                        ' '.join([str(k), str(v)]) for k,v in java_flags.items()], '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
             stdin=self.stdin,
             stdout=self.stdout,

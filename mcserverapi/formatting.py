@@ -1,4 +1,4 @@
-SPECIAL_CHAR  '§'
+SPECIAL_CHAR = '§'
 
 
 # COLORS
