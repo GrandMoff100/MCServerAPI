@@ -47,7 +47,6 @@ class Server:
                 print(colorama.RED + 'There is another Server Process already running, please terminate that and run this again.')
                 time.sleep(5)
                 exit()
-                
 
     def start(self, *java_args, **java_flags):
         self._check_for_conflicting_procs()
@@ -58,8 +57,6 @@ class Server:
         if 'nogui' in java_args:
             java_args.remove('nogui')
         
-        
-        # noinspection PyTypeChecker
         self.process = subprocess.Popen(
             ' '.join([self._java, *java_args, *[' '.join(str(k), str(v)) for k,v in java_flags.items()], '-jar', self.jar, 'nogui']),
             cwd=self.abs_cwd,
