@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='mcserverapi',
-    version='1.3.1',
+    version='1.4.2',
     packages=['mcserverapi'],
     url='https://github.com/TeamNightSky/MCServerAPI',
     license='GNU License',
